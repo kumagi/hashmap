@@ -60,8 +60,17 @@ public:
 		ptr = &lock;
 		ptr->lock();
 	};
+	void unlock(){
+		// you can't relock this object
+		if(ptr){
+			ptr->unlock();
+			ptr = NULL;
+		}
+	}
 	~scoped_lock(){
-		ptr->unlock();
+		if(ptr){
+			ptr->unlock();
+		}
 	}
 private:
 	scoped_lock();

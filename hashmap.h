@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <string>
 class not_found : public std::logic_error {
 public:
 	not_found():std::logic_error("not found"){}
@@ -35,9 +36,13 @@ public:
 		bucket_t *target = &bucket[hashed % bucket_size]
 			,*old_target;
 		detail::scoped_lock<detail::spin_lock> lk(lock[hashed%locks]);
+
 		while(target != NULL){
 			if(target->kvp == NULL){
 				target->kvp = kvp;
+				if(loads.faa(1) * load_factor > load_factor * bucket_size){
+					buckets_extend();
+				}
 				return true;
 			}else if(target->kvp->first == kvp->first){
 				return false;
@@ -71,7 +76,7 @@ public:
 	}
 	value get(const key& k)const throw(not_found){
 		const std::size_t hashed = hash_value(k);
-		bucket_t* target = &bucket[hashed % bucket_size];
+		const bucket_t* target = &bucket[hashed % bucket_size];
 		
 		detail::scoped_lock<detail::spin_lock> lk(lock[hashed%locks]);
 		while(target != NULL && target->kvp != NULL){
@@ -107,7 +112,32 @@ public:
 			bucket.rebind(NULL);
 		}
 	}
+	void dump()const{
+		for(int i=0; i < locks; ++i){	lock[i].lock();	}
+		for(int i=0; i < bucket_size; ++i){
+			const bucket_t* ptr = &bucket[i];
+			std::cout << "[" << i << "]->";
+			while(ptr != NULL){
+				if(ptr->kvp){
+					std::cout << "[" << ptr->kvp->first << "=" << ptr->kvp->second << "]->";
+				}else{
+					std::cout << "[ ]->";
+				}
+				ptr=ptr->next;
+			}
+			std::cout << std::endl;
+		}
+		for(int i=0; i < locks; ++i){	lock[i].unlock();	}
+	}
 private:
+	void buckets_extend(){
+		std::cout << "resize\n";
+		if(!bucket.try_mark()){
+			return; // other one already extending bucket
+		}
+		const std::size_t newsize = bucket_size * 2;
+		marked_ptr<bucket_t> new_bucket(new bucket_t[newsize]);
+	}
 	struct bucket_t{
 		std::pair<const key,value>* kvp;
 		bucket_t* next;
@@ -127,7 +157,7 @@ private:
 
 	mutable detail::spin_lock lock[locks];
 	std::size_t bucket_size;
-	const uint8_t load_factor; // (load_factor/256) is load_factor
+	const uint8_t load_factor; // (load_factor/255) is load_factor percentage
 	atomic_integer<uint32_t> loads;
 	marked_ptr<bucket_t> bucket;
 };

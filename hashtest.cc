@@ -67,8 +67,9 @@ TEST(remove, one_key){
 TEST(remove, many_key){
 	hashmap<int, int> hmp;
 	for(int i=0; i < 1024; ++i){
-		hmp.insert(std::make_pair<int,int>(i,i));
+		hmp.insert(std::make_pair<int,int>(i,i*i));
 	}
+	//hmp.dump();
 	for(int i=0; i < 1024; i+=2){
 		hmp.remove(i);
 	}
@@ -91,6 +92,7 @@ void insert_worker(hashmap<key,value>* target
 	b->wait();
 	for(int i=0 ; i < keys.size(); ++i){
 		target->insert(std::make_pair(keys[i],values[i]));
+
 	}
 }
 template<typename key, typename value>
@@ -158,7 +160,6 @@ TEST(concurrent, remove){
 		keys_1.push_back(i);
 		keys_2.push_back(i+testsize);
 	}
-
 	boost::barrier bar(2);
 	boost::thread a(boost::bind(remove_worker<int,int>
 															, &hmp, &bar, keys_1))
