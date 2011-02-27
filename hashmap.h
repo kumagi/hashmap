@@ -21,53 +21,56 @@ public:
 template <typename key, typename value, int locks = 8>
 class hashmap{
 public:
-	hashmap()
-		:bucket_size(32),load_factor(200),loads(0),bucket(new bucket_t[bucket_size])
-	{}
-	hashmap(const uint8_t lf)
-		:bucket_size(32),load_factor(lf),loads(0),bucket(new bucket_t[bucket_size])
-	{}
-	bool insert(const std::pair<const key, value>& kvp){
-		std::pair<const key, value>* new_kvp = new std::pair<const key, value>(kvp);
-		insert_mov(new_kvp);
+	hashmap(const uint32_t size = 32, const uint16_t lf = 256)
+		:load_factor(lf),loads(0),bucket_vector(size)
+	{
+		for(int i=0;i < bucket_vector.size();++i){
+			bucket_vector[i] = NULL;
+		}
 	}
-	bool insert_mov(std::pair<const key,value>* kvp){
-		const std::size_t hashed = hash_value(kvp->first);
-		bucket_t *target = &bucket[hashed % bucket_size]
-			,*old_target;
-		detail::scoped_lock<detail::spin_lock> lk(lock[hashed%locks]);
+	bool insert(const std::pair<const key,value>& kvp){
+		const std::size_t hashed = hash_value(kvp.first);
 
-		while(target != NULL){
-			if(target->kvp == NULL){
-				target->kvp = kvp;
-				if(loads.faa(1) * load_factor > load_factor * bucket_size){
-					buckets_extend();
-				}
-				return true;
-			}else if(target->kvp->first == kvp->first){
+		detail::scoped_lock<detail::spin_lock> 
+			lk(lock[hashed % bucket_vector.size() % locks]);
+		bucket_t *curr = bucket_vector[hashed % bucket_vector.size()];
+		bucket_t **prev = &bucket_vector[hashed % bucket_vector.size()];
+		while(curr != NULL){
+			if(curr->kvp.first == kvp.first){
 				return false;
 			}
-			old_target = target;
-			target = target->next;
+			prev = &curr->next;
+			curr = curr->next;
 		}
-		old_target->next = new bucket_t();
-		old_target->next->kvp = kvp;
+		
+		*prev = new bucket_t(kvp);
+		
+		const uint32_t load = loads.faa(1);
+		if(load * 255 > static_cast<uint64_t>(load_factor) * bucket_vector.size()){
+			uint32_t old_size = bucket_vector.size();
+			lk.unlock();
+			if(buckets_extend()){
+				std::cout << "load:" << load << " * 255 > " <<
+					load_factor << " * " << old_size << std::endl;
+				loads.faa(-load);
+			}
+		}
 		return true;
 	}
 	bool contains(const key& k)const{
 		const std::size_t hashed = hash_value(k);
-		const bucket_t* target = &bucket[hashed % bucket_size];
 		
-		detail::scoped_lock<detail::spin_lock> lk(lock[hashed%locks]);
-		while(target != NULL && target->kvp != NULL){
-			if(target->kvp->first == k){ return true; }
+		detail::scoped_lock<detail::spin_lock> lk(lock[hashed % bucket_vector.size() % locks]);
+		const bucket_t* target = bucket_vector[hashed % bucket_vector.size()];
+		while(target != NULL){
+			if(target->kvp.first == k){ return true; }
 			target = target->next;
 		}
 		return false;
 	}
 	value* get_unsafe(const key& k)const{
 		const std::size_t hashed = hash_value(k);
-		bucket_t* target = &bucket[hashed % bucket_size];
+		bucket_t* target = &bucket_vector[hashed % bucket_vector.size()];
 		while(target != NULL && target->kvp != NULL){
 			if(target->kvp->first == k){ return &target->kvp->second; }
 			target = target->next;
@@ -76,90 +79,107 @@ public:
 	}
 	value get(const key& k)const throw(not_found){
 		const std::size_t hashed = hash_value(k);
-		const bucket_t* target = &bucket[hashed % bucket_size];
+		const bucket_t* target = bucket_vector[hashed % bucket_vector.size()];
 		
-		detail::scoped_lock<detail::spin_lock> lk(lock[hashed%locks]);
-		while(target != NULL && target->kvp != NULL){
-			if(target->kvp->first == k){ return value(target->kvp->second); }
+		detail::scoped_lock<detail::spin_lock> lk(lock[hashed % bucket_vector.size() % locks]);
+		while(target != NULL){
+			if(target->kvp.first == k){ return value(target->kvp.second); }
 			target = target->next;
 		};
 		throw not_found();
 	}
 	bool remove(const key& k){
 		const std::size_t hashed = hash_value(k);
-		bucket_t* target = &bucket[hashed % bucket_size]
-			,*old_target = NULL;
 		
-		detail::scoped_lock<detail::spin_lock> lk(lock[hashed%locks]);
-		while(target != NULL && target->kvp != NULL){
-			if(target->kvp->first == k){
-				if(old_target != NULL){
-					old_target->next = target->next;
-					target->unlink();
-					delete target;
-					return true;
-				}else{
-					target->kvp = NULL;
-				}
+		detail::scoped_lock<detail::spin_lock> lk(lock[hashed % bucket_vector.size() % locks]);
+		bucket_t **pred = &bucket_vector[hashed % bucket_vector.size()];
+		bucket_t *curr = *pred;
+		while(curr != NULL){
+			if(curr->kvp.first == k){
+				*pred = curr->next;
+				delete curr;
+				loads.faa(-1);
+				return true;
 			}
-			old_target = target;
-			target = target->next;
+			pred = &curr->next;
+			curr = curr->next;
 		};
+		return false;
 	}
 	~hashmap(){
-		if(bucket){
-			delete[] bucket;
-			bucket.rebind(NULL);
+		for(int i=0; i < bucket_vector.size(); i++){
+			bucket_t*  ptr = bucket_vector[i], *old_next;
+			while(ptr != NULL){
+				old_next = ptr->next;
+				delete ptr;
+				ptr = old_next;
+			}
 		}
 	}
 	void dump()const{
 		for(int i=0; i < locks; ++i){	lock[i].lock();	}
-		for(int i=0; i < bucket_size; ++i){
-			const bucket_t* ptr = &bucket[i];
+		bucket_t* const * const array = bucket_vector.get();
+		for(int i=0; i < bucket_vector.size(); ++i){
+			const bucket_t* ptr = array[i];
 			std::cout << "[" << i << "]->";
 			while(ptr != NULL){
-				if(ptr->kvp){
-					std::cout << "[" << ptr->kvp->first << "=" << ptr->kvp->second << "]->";
-				}else{
-					std::cout << "[ ]->";
-				}
-				ptr=ptr->next;
+				std::cout << "[" << ptr->kvp.first << "=" << ptr->kvp.second << "]->";
+				ptr = ptr->next;
 			}
 			std::cout << std::endl;
 		}
 		for(int i=0; i < locks; ++i){	lock[i].unlock();	}
 	}
 private:
-	void buckets_extend(){
-		std::cout << "resize\n";
-		if(!bucket.try_mark()){
-			return; // other one already extending bucket
+	bool buckets_extend(){
+		if(!bucket_vector.try_mark()){
+			return false; // other one already extending bucket
 		}
-		const std::size_t newsize = bucket_size * 2;
-		marked_ptr<bucket_t> new_bucket(new bucket_t[newsize]);
+		const std::size_t newsize = bucket_vector.size() * 2;
+		marked_vector<bucket_t*> new_buckets(newsize);
+		bool locked[locks];
+
+		for(int i=0; i < locks; ++i){locked[i] = false;}
+		for(int i=0; i < bucket_vector.size(); ++i){
+			const int target_lock = i % locks;
+			if(!locked[target_lock]){ // get lock
+				lock[target_lock].lock();
+				locked[target_lock] = true;
+			}
+			bucket_t *curr = bucket_vector[i];
+			bucket_t **tail_smaller = &new_buckets[i];
+			bucket_t **tail_bigger = &new_buckets[i+bucket_vector.size()];
+			while(curr != NULL){
+				const std::size_t hashed = hash_value(curr->kvp.first);
+				if(hashed % newsize == i){
+					*tail_smaller = curr;
+					tail_smaller = &curr->next;
+				}else{
+					*tail_bigger = curr;
+					tail_bigger = &curr->next;
+				}
+				curr = curr->next;
+			}
+			*tail_smaller = *tail_bigger = NULL;
+		}
+		// assert all lock gained
+		bucket_vector.swap(new_buckets);
+		for(int i=0; i < locks; ++i){
+			lock[i].unlock();
+		}
+		return true;
 	}
 	struct bucket_t{
-		std::pair<const key,value>* kvp;
+		typedef	std::pair<const key,value> pair_t;
+		pair_t kvp;
 		bucket_t* next;
-		bucket_t():kvp(NULL),next(NULL){}
-		void unlink(){
-			next = NULL;
-		}
-		~bucket_t(){
-			if(next != NULL){
-				delete next;
-			}
-			if(kvp != NULL){
-				delete kvp;
-			}
-		}
+		bucket_t(const pair_t& k):kvp(k),next(NULL){}
 	};
 
 	mutable detail::spin_lock lock[locks];
-	std::size_t bucket_size;
-	const uint8_t load_factor; // (load_factor/255) is load_factor percentage
+	const uint32_t load_factor; // (load_factor/255) is load_factor percentage
 	atomic_integer<uint32_t> loads;
-	marked_ptr<bucket_t> bucket;
+	marked_vector<bucket_t*> bucket_vector;
 };
 
 #endif

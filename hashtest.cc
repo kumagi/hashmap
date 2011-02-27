@@ -6,6 +6,11 @@
 #include <boost/bind.hpp>
 #include <boost/array.hpp>
 
+using boost::thread;
+using boost::bind;
+using boost::array;
+
+
 TEST(construct,buckets){
 	hashmap<int,std::string> hm;
 	hashmap<std::string, int> hmp;
@@ -14,8 +19,8 @@ TEST(construct,buckets){
 
 TEST(insert, int_char)
 {
-	hashmap<int, char> hmp;
-	hmp.insert(std::make_pair<int,char>(2,4));
+	hashmap<int, int> hmp;
+	hmp.insert(std::make_pair<int,int>(2,4));
 }
 TEST(contains, one_key)
 {
@@ -33,9 +38,9 @@ TEST(contains, two_key)
 }
 TEST(contains, many_key)
 {
-	hashmap<int, char> hmp;
+	hashmap<int, int> hmp;
 	for(int i=0; i < 256; ++i){
-		hmp.insert(std::make_pair<int,char>(i,i));
+		hmp.insert(std::make_pair<int,int>(i,i*i));
 	}
 	for(int i=0; i < 256; ++i){
 		EXPECT_TRUE(hmp.contains(i));
@@ -69,7 +74,6 @@ TEST(remove, many_key){
 	for(int i=0; i < 1024; ++i){
 		hmp.insert(std::make_pair<int,int>(i,i*i));
 	}
-	//hmp.dump();
 	for(int i=0; i < 1024; i+=2){
 		hmp.remove(i);
 	}
@@ -105,6 +109,18 @@ void remove_worker(hashmap<key,value>* target
 		target->remove(keys[i]);
 	}
 }
+template<typename key, typename value>
+void get_worker(hashmap<key,value>* target
+									 ,boost::barrier* b
+									 ,const std::vector<key> keys)
+{
+	b->wait();
+	for(int i=0 ; i < keys.size(); ++i){
+		try{
+		target->get(keys[i]);
+		}catch(not_found e){};
+	}
+}
 
 TEST(concurrent, insert){
 	const int testnum = 512;
@@ -136,7 +152,7 @@ TEST(concurrent, insert_and_check){
 	}
 	hashmap<int, int> hmp;
 	boost::barrier bar(2);
-	boost::thread a(boost::bind(insert_worker<int,int>
+	thread a(boost::bind(insert_worker<int,int>
 															, &hmp, &bar, keys_1, values_1))
 		, b(boost::bind(insert_worker<int,int>
 										, &hmp, &bar,  keys_2, values_2));
@@ -161,7 +177,7 @@ TEST(concurrent, remove){
 		keys_2.push_back(i+testsize);
 	}
 	boost::barrier bar(2);
-	boost::thread a(boost::bind(remove_worker<int,int>
+	thread a(boost::bind(remove_worker<int,int>
 															, &hmp, &bar, keys_1))
 		, b(boost::bind(remove_worker<int,int>
 										, &hmp, &bar,  keys_2));
@@ -175,26 +191,27 @@ TEST(concurrent, remove){
 
 TEST(concurrent, insert_and_remove){
 	std::vector<int> keys_1, keys_2, values_1, values_2;
-	const int test = 4096;
+	const int testsize = 4096;
 	hashmap<int, int> hmp;
-	for(int i=0;i<test;i++){
+	for(int i=0;i<testsize;i++){
 		keys_1.push_back(i*2); // to remove
 		hmp.insert(std::make_pair(i*2, i));
 		keys_2.push_back(i*2+1); // to insert
-		values_2.push_back((i+test) * (i+test)); // to insert
+		values_2.push_back((i+testsize) * (i+testsize)); // to insert
 	}
 
 	boost::barrier bar(2);
-	boost::thread
-		a(boost::bind(remove_worker<int,int>, &hmp, &bar, keys_1)),
-		b(boost::bind(insert_worker<int,int>, &hmp, &bar,  keys_2, values_2));
+	thread
+		a(bind(remove_worker<int,int>, &hmp, &bar, keys_1)),
+		b(bind(insert_worker<int,int>, &hmp, &bar,  keys_2, values_2));
 	a.join();
 	b.join();
-	for(int i=0;i<test;i++){
+	for(int i=0;i<testsize;i++){
 		EXPECT_FALSE(hmp.contains(i*2));
 		EXPECT_TRUE(hmp.contains(i*2 + 1));
 	}
 }
+
 TEST(concurrent, insert_and_remove_more){
 	boost::array<std::vector<int>, 4> keys, values;
 	hashmap<int, int> hmp;
@@ -203,7 +220,7 @@ TEST(concurrent, insert_and_remove_more){
 		keys[i].resize(testsize);
 		values[i].resize(testsize);
 	}
-	for(int i=0;i<4096;i++){
+	for(int i=0;i<testsize;i++){
 		keys[0][i] = i*4; // to remove
 		keys[1][i] = i*4 + 1; // to insert
 		keys[2][i] = i*4 + 2; // to remove
@@ -212,11 +229,11 @@ TEST(concurrent, insert_and_remove_more){
 		values[3][i] = i;
 	}
 	boost::barrier bar(4);
-	boost::thread
-		a(boost::bind(remove_worker<int,int>, &hmp, &bar, keys[0])),
-		b(boost::bind(insert_worker<int,int>, &hmp, &bar, keys[1], values[1])),
-		c(boost::bind(remove_worker<int,int>, &hmp, &bar, keys[2])),
-		d(boost::bind(insert_worker<int,int>, &hmp, &bar, keys[3], values[3]));
+	thread
+		a(bind(remove_worker<int,int>, &hmp, &bar, keys[0])),
+		b(bind(insert_worker<int,int>, &hmp, &bar, keys[1], values[1])),
+		c(bind(remove_worker<int,int>, &hmp, &bar, keys[2])),
+		d(bind(insert_worker<int,int>, &hmp, &bar, keys[3], values[3]));
 	a.join();
 	b.join();
 	c.join();
@@ -226,5 +243,165 @@ TEST(concurrent, insert_and_remove_more){
 		EXPECT_TRUE(hmp.contains(i*4 + 1));
 		EXPECT_FALSE(hmp.contains(i*4 + 2));
 		EXPECT_TRUE(hmp.contains(i*4 + 3));
+	}
+}
+
+
+TEST(concurrent, insert_and_get){
+	boost::array<std::vector<int>, 4> keys, values;
+	hashmap<int, int> hmp;
+	const int testsize = 4096;
+	for(int i = 0; i<4; ++i){
+		keys[i].resize(testsize);
+		values[i].resize(testsize);
+	}
+	for(int i=0;i<testsize;i++){
+		keys[0][i] = i*4;
+		hmp.insert(std::make_pair(i*4, i*4 + 2)); // to get
+		keys[1][i] = i*4 + 1; // to insert
+		keys[2][i] = i*4 + 2; // to get
+		hmp.insert(std::make_pair(i*4 + 2, i*4 + 3));
+		keys[3][i] = i*4 + 3; // to insert
+		values[1][i] = i;
+		values[3][i] = i;
+	}
+	boost::barrier bar(4);
+	thread a[] = {
+		thread(bind(get_worker<int,int>, &hmp, &bar, keys[0])),
+		thread(bind(insert_worker<int,int>, &hmp, &bar, keys[1], values[1])),
+		thread(bind(get_worker<int,int>, &hmp, &bar, keys[2])),
+		thread(bind(insert_worker<int,int>, &hmp, &bar, keys[3], values[3]))
+	};
+	for(int i=0;i<4;++i){
+		a[i].join();
+	}
+	for(int i=0;i<testsize;i++){
+		EXPECT_TRUE(hmp.contains(i*4));
+		EXPECT_TRUE(hmp.contains(i*4 + 1));
+		EXPECT_TRUE(hmp.contains(i*4 + 2));
+		EXPECT_TRUE(hmp.contains(i*4 + 3));
+	}
+}
+
+TEST(concurrent, remove_and_get){
+	boost::array<std::vector<int>, 4> keys;
+	hashmap<int, int> hmp;
+	const int testsize = 4096;
+	for(int i = 0; i<4; ++i){
+		keys[i].resize(testsize);
+	}
+	for(int i=0;i<testsize;i++){
+		keys[0][i] = i*4;
+		hmp.insert(std::make_pair(i*4, i*4 + 1)); // to get
+		keys[1][i] = i*4 + 1;
+		hmp.insert(std::make_pair(i*4 + 1, i*4 + 2)); // to remove
+		keys[2][i] = i*4 + 2;
+		hmp.insert(std::make_pair(i*4 + 2, i*4 + 3)); // to get
+		keys[3][i] = i*4 + 3;
+		hmp.insert(std::make_pair(i*4 + 3, i*4 + 4)); // to remove
+	}
+	boost::barrier bar(4);
+	thread a[] = {
+		thread(bind(get_worker<int,int>, &hmp, &bar, keys[0])),
+		thread(bind(remove_worker<int,int>, &hmp, &bar, keys[1])),
+		thread(bind(get_worker<int,int>, &hmp, &bar, keys[2])),
+		thread(bind(remove_worker<int,int>, &hmp, &bar, keys[3]))
+	};
+	for(int i=0;i<4;++i){
+		a[i].join();
+	}
+	for(int i=0;i<testsize;i++){
+		EXPECT_TRUE(hmp.contains(i*4));
+		EXPECT_FALSE(hmp.contains(i*4 + 1));
+		EXPECT_TRUE(hmp.contains(i*4 + 2));
+		EXPECT_FALSE(hmp.contains(i*4 + 3));
+	}
+}
+
+TEST(concurrent, insert_and_get_and_remove){
+	boost::array<std::vector<int>, 6> keys, values;
+	hashmap<int, int> hmp;
+	const int testsize = 4096;
+	for(int i = 0; i<6; ++i){
+		keys[i].resize(testsize);
+		values[i].resize(testsize);
+	}
+	for(int i=0;i<testsize;i++){
+		keys[0][i] = i*6; // to insert
+		values[0][i] = i*6 + 1;
+		keys[1][i] = i*6 + 1;
+		hmp.insert(std::make_pair(i*6 + 1, i*6 + 2)); // to get
+		keys[2][i] = i*6 + 2;
+		hmp.insert(std::make_pair(i*6 + 2, i*6 + 3)); // to remove
+		keys[3][i] = i*6 + 3; // to insert
+		values[3][i] = i*6 + 4;
+		keys[4][i] = i*6 + 4;
+		hmp.insert(std::make_pair(i*6 + 4, i*6 + 5)); // to get
+		keys[5][i] = i*6 + 5;
+		hmp.insert(std::make_pair(i*6 + 5, i*6 + 6)); // to remove
+	}
+	boost::barrier bar(6);
+	thread a[] = {
+		thread(bind(insert_worker<int,int>, &hmp, &bar, keys[0], values[0])),
+		thread(bind(get_worker<int,int>, &hmp, &bar, keys[1])),
+		thread(bind(remove_worker<int,int>, &hmp, &bar, keys[2])),
+		thread(bind(insert_worker<int,int>, &hmp, &bar, keys[3], values[3])),
+		thread(bind(get_worker<int,int>, &hmp, &bar, keys[4])),
+		thread(bind(remove_worker<int,int>, &hmp, &bar, keys[5]))
+	};
+	for(int i=0;i<6;++i){
+		a[i].join();
+	}
+	for(int i=0;i<testsize;i++){
+		EXPECT_TRUE(hmp.contains(i*6));
+		EXPECT_TRUE(hmp.contains(i*6 + 1));
+		EXPECT_FALSE(hmp.contains(i*6 + 2));
+		EXPECT_TRUE(hmp.contains(i*6 + 3));
+		EXPECT_TRUE(hmp.contains(i*6 + 4));
+		EXPECT_FALSE(hmp.contains(i*6 + 5));
+	}
+}
+
+TEST(concurrent, insert_and_get_and_remove_big){
+	boost::array<std::vector<int>, 6> keys, values;
+	hashmap<int, int> hmp;
+	const int testsize = 4096 * 2024;
+	for(int i = 0; i<6; ++i){
+		keys[i].resize(testsize);
+		values[i].resize(testsize);
+	}
+	for(int i=0;i<testsize;i++){
+		keys[0][i] = i*6; // to insert
+		values[0][i] = i*6 + 1;
+		keys[1][i] = i*6 + 1;
+		hmp.insert(std::make_pair(i*6 + 1, i*6 + 2)); // to get
+		keys[2][i] = i*6 + 2;
+		hmp.insert(std::make_pair(i*6 + 2, i*6 + 3)); // to remove
+		keys[3][i] = i*6 + 3; // to insert
+		values[3][i] = i*6 + 4;
+		keys[4][i] = i*6 + 4;
+		hmp.insert(std::make_pair(i*6 + 4, i*6 + 5)); // to get
+		keys[5][i] = i*6 + 5;
+		hmp.insert(std::make_pair(i*6 + 5, i*6 + 6)); // to remove
+	}
+	boost::barrier bar(6);
+	thread a[] = {
+		thread(bind(insert_worker<int,int>, &hmp, &bar, keys[0], values[0])),
+		thread(bind(get_worker<int,int>, &hmp, &bar, keys[1])),
+		thread(bind(remove_worker<int,int>, &hmp, &bar, keys[2])),
+		thread(bind(insert_worker<int,int>, &hmp, &bar, keys[3], values[3])),
+		thread(bind(get_worker<int,int>, &hmp, &bar, keys[4])),
+		thread(bind(remove_worker<int,int>, &hmp, &bar, keys[5]))
+	};
+	for(int i=0;i<6;++i){
+		a[i].join();
+	}
+	for(int i=0;i<testsize;i++){
+		EXPECT_TRUE(hmp.contains(i*6));
+		EXPECT_TRUE(hmp.contains(i*6 + 1));
+		EXPECT_FALSE(hmp.contains(i*6 + 2));
+		EXPECT_TRUE(hmp.contains(i*6 + 3));
+		EXPECT_TRUE(hmp.contains(i*6 + 4));
+		EXPECT_FALSE(hmp.contains(i*6 + 5));
 	}
 }

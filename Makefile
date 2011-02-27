@@ -1,5 +1,5 @@
 CXX= g++
-OPTS= -O0 -g
+OPTS= -O4 -g
 WARNS= -W -Wall -Wextra -Wformat=2 -Wstrict-aliasing=4 -Wcast-qual -Wcast-align \
 	-Wwrite-strings -Wfloat-equal -Wpointer-arith -Wswitch-enum
 TEST_LD= -lpthread -lboost_thread
@@ -13,6 +13,8 @@ target:hashtest
 hashtest:hashtest.o gtest_main.a
 	$(CXX) $^ -o $@ $(OPTS) $(TEST_LD)
 	./$@ $(NOTIFY)
+hashtest_prof:hashtest.o gtest_main.a
+	$(CXX) $^ -o $@ $(OPTS) $(TEST_LD) -pg
 
 hashtest.o:hashtest.cc hashmap.h
 	$(CXX) -c $< -o $@ $(OPTS)
