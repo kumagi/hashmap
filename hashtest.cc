@@ -94,7 +94,7 @@ void insert_worker(hashmap<key,value>* target
 {
 	assert(keys.size() == values.size());
 	b->wait();
-	for(int i=0 ; i < keys.size(); ++i){
+	for(size_t i=0 ; i < keys.size(); ++i){
 		target->insert(std::make_pair(keys[i],values[i]));
 
 	}
@@ -105,7 +105,7 @@ void remove_worker(hashmap<key,value>* target
 									 ,const std::vector<key> keys)
 {
 	b->wait();
-	for(int i=0 ; i < keys.size(); ++i){
+	for(size_t i=0 ; i < keys.size(); ++i){
 		target->remove(keys[i]);
 	}
 }
@@ -115,7 +115,7 @@ void get_worker(hashmap<key,value>* target
 									 ,const std::vector<key> keys)
 {
 	b->wait();
-	for(int i=0 ; i < keys.size(); ++i){
+	for(size_t i=0 ; i < keys.size(); ++i){
 		try{
 		target->get(keys[i]);
 		}catch(not_found e){};

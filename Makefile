@@ -9,16 +9,18 @@ GTEST_DIR=/opt/google/gtest-1.5.0
 NOTIFY=&& notify-send Test success! -i ~/themes/ok_icon.png || notify-send Test failed... -i ~/themes/ng_icon.png
 
 target:hashtest
+target:insert_bench
 
 hashtest:hashtest.o gtest_main.a
-	$(CXX) $^ -o $@ $(OPTS) $(TEST_LD)
+	$(CXX) $^ -o $@ $(OPTS) $(TEST_LD) $(WARNS)
 	./$@ $(NOTIFY)
-hashtest_prof:hashtest.o gtest_main.a
-	$(CXX) $^ -o $@ $(OPTS) $(TEST_LD) -pg
+insert_bench:insert_bench.o
+	$(CXX) $^ -o $@ -O4 -g -pg $(WARNS) -lpthread
 
 hashtest.o:hashtest.cc hashmap.h
-	$(CXX) -c $< -o $@ $(OPTS)
-
+	$(CXX) -c $< -o $@ $(OPTS) $(WARNS)
+insert_bench.o:insert_bench.cc
+	$(CXX) -c $< -o $@ -O4 -g -pg $(WARNS) -fno-inline
 
 
 #	$(CXX) -c -o $@ sl.cc  $(OPTS) $(WARNS) -I$(GTEST_DIR)/include -I$(GTEST_DIR)

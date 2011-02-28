@@ -8,7 +8,6 @@
 #include "locks.h"
 #include "hash.h"
 #include "marked_ptr.h"
-#include "atomic_integer.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -21,8 +20,8 @@ public:
 template <typename key, typename value, int locks = 8>
 class hashmap{
 public:
-	hashmap(const uint32_t size = 32, const uint16_t lf = 256)
-		:load_factor(lf),loads(0),bucket_vector(size)
+	hashmap(const uint32_t size = 32, const uint16_t lf = 256, const uint32_t mc = 3)
+		:load_factor(lf), max_chain(mc), bucket_vector(size)
 	{
 		for(int i=0;i < bucket_vector.size();++i){
 			bucket_vector[i] = NULL;
@@ -35,25 +34,23 @@ public:
 			lk(lock[hashed % bucket_vector.size() % locks]);
 		bucket_t *curr = bucket_vector[hashed % bucket_vector.size()];
 		bucket_t **prev = &bucket_vector[hashed % bucket_vector.size()];
+
+		uint32_t chain_counter = 0;
 		while(curr != NULL){
 			if(curr->kvp.first == kvp.first){
 				return false;
+
 			}
 			prev = &curr->next;
 			curr = curr->next;
+			++chain_counter;
 		}
 		
 		*prev = new bucket_t(kvp);
 		
-		const uint32_t load = loads.faa(1);
-		if(load * 255 > static_cast<uint64_t>(load_factor) * bucket_vector.size()){
-			uint32_t old_size = bucket_vector.size();
+		if(max_chain < chain_counter){
 			lk.unlock();
-			if(buckets_extend()){
-				std::cout << "load:" << load << " * 255 > " <<
-					load_factor << " * " << old_size << std::endl;
-				loads.faa(-load);
-			}
+			buckets_extend();
 		}
 		return true;
 	}
@@ -98,7 +95,6 @@ public:
 			if(curr->kvp.first == k){
 				*pred = curr->next;
 				delete curr;
-				loads.faa(-1);
 				return true;
 			}
 			pred = &curr->next;
@@ -135,32 +131,28 @@ private:
 		if(!bucket_vector.try_mark()){
 			return false; // other one already extending bucket
 		}
-		const std::size_t newsize = bucket_vector.size() * 2;
+		const std::size_t oldsize = bucket_vector.size();
+		const std::size_t newsize = oldsize * 2 + 1;
+		std::cout << "extend to " << newsize << std::endl;
 		marked_vector<bucket_t*> new_buckets(newsize);
 		bool locked[locks];
 
-		for(int i=0; i < locks; ++i){locked[i] = false;}
-		for(int i=0; i < bucket_vector.size(); ++i){
+		for(size_t i=0; i < locks; ++i){locked[i] = false;}
+		for(size_t i=0; i < newsize; ++i){new_buckets[i] = NULL;}
+		for(size_t i=0; i < oldsize; ++i){
 			const int target_lock = i % locks;
 			if(!locked[target_lock]){ // get lock
 				lock[target_lock].lock();
 				locked[target_lock] = true;
 			}
 			bucket_t *curr = bucket_vector[i];
-			bucket_t **tail_smaller = &new_buckets[i];
-			bucket_t **tail_bigger = &new_buckets[i+bucket_vector.size()];
 			while(curr != NULL){
-				const std::size_t hashed = hash_value(curr->kvp.first);
-				if(hashed % newsize == i){
-					*tail_smaller = curr;
-					tail_smaller = &curr->next;
-				}else{
-					*tail_bigger = curr;
-					tail_bigger = &curr->next;
-				}
-				curr = curr->next;
+				const std::size_t new_place = hash_value(curr->kvp.first) % newsize;
+				bucket_t* const old_next = curr->next;
+				curr->next = new_buckets[new_place];
+				new_buckets[new_place] = curr;
+				curr = old_next;
 			}
-			*tail_smaller = *tail_bigger = NULL;
 		}
 		// assert all lock gained
 		bucket_vector.swap(new_buckets);
@@ -178,7 +170,7 @@ private:
 
 	mutable detail::spin_lock lock[locks];
 	const uint32_t load_factor; // (load_factor/255) is load_factor percentage
-	atomic_integer<uint32_t> loads;
+	const uint32_t max_chain;
 	marked_vector<bucket_t*> bucket_vector;
 };
 
