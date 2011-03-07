@@ -1,0 +1,32 @@
+       14477.706298  task-clock-msecs         #      1.475 CPUs
+              12215  context-switches         #      0.001 M/sec
+                 75  CPU-migrations           #      0.000 M/sec
+              45686  page-faults              #      0.003 M/sec
+        34540523663  cycles                   #   2385.773 M/sec  (scaled from 70.36%)
+        21821316204  instructions             #      0.632 IPC    (scaled from 80.21%)
+         4645163970  branches                 #    320.849 M/sec  (scaled from 80.10%)
+            6368531  branch-misses            #      0.137 %      (scaled from 79.88%)
+          157588981  cache-references         #     10.885 M/sec  (scaled from 19.90%)
+            1920498  cache-misses             #      0.133 M/sec  (scaled from 20.15%)
+
+
+         4718313964  branches                  (scaled from 11.74%)
+            7069675  branch-misses            #      0.150 %      (scaled from 11.94%)
+         4790732190  branch-loads              (scaled from 11.84%)
+            6696105  branch-load-misses        (scaled from 11.92%)
+          172828899  cache-references          (scaled from 12.00%)
+            1097301  cache-misses              (scaled from 11.95%)
+        12337244348  L1-dcache-loads           (scaled from 11.99%)
+           29201237  L1-dcache-load-misses     (scaled from 11.97%)
+         6098105482  L1-dcache-stores          (scaled from 11.82%)
+          175889969  L1-dcache-store-misses    (scaled from 11.74%)
+            2719295  L1-dcache-prefetches      (scaled from 11.64%)
+      <not counted>  L1-dcache-prefetch-misses
+        35131865493  L1-icache-loads           (scaled from 11.76%)
+            2935306  L1-icache-load-misses     (scaled from 11.81%)
+      <not counted>  L1-icache-prefetches    
+      <not counted>  L1-icache-prefetch-misses
+        12149555384  dTLB-loads                (scaled from 11.66%)
+           37549059  dTLB-load-misses          (scaled from 11.75%)
+         5990972530  dTLB-stores               (scaled from 11.80%)
+             911446  dTLB-store-misses         (scaled from 11.63%)

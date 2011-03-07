@@ -37,15 +37,20 @@ public:
 		ptr_ = new_ptr;
 	}
 	void swap(marked_vector_t& other){
-		std::swap(ptr_, other.ptr_);
 		std::swap(size_, other.size_);
+		//std::swap(ptr_, other.ptr_);
+		T* old;
+		do{
+			old = ptr_;
+		}while(!__sync_bool_compare_and_swap(&ptr_,old,other.ptr_));
+		other.ptr_ = old;
 	}
 	T& operator[](const int index){
 		assert(0 <= index);
-		assert(index < size_);
+		assert(static_cast<size_t>(index) < size_);
 		return get()[index];
 	}
-	int size()const{return  size_;}
+	size_t size()const{return  size_;}
 	const T& operator[](const int index)const{
 		return get()[index];
 	}
@@ -56,7 +61,7 @@ private:
 	marked_vector();
 	marked_vector(const marked_vector<T>&);
 	marked_vector& operator=(const marked_vector<T>&);
-	int size_;
+	size_t size_;
 	T* ptr_;
 };
 
