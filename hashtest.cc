@@ -17,10 +17,20 @@ TEST(construct,buckets){
 	hashmap<int, std::list<int> > h;
 }
 
+TEST(construct,no_lock){
+	hashmap<int,std::string,0> hm;
+	hashmap<std::string, int,0> hmp;
+	hashmap<int, std::list<int>,0 > h;
+}
+
 TEST(insert, int_char)
 {
 	hashmap<int, int> hmp;
 	hmp.insert(std::make_pair<int,int>(2,4));
+}
+TEST(insert,no_lock){
+	hashmap<int,int,0> hm;
+	hm.insert(std::make_pair(2,1));
 }
 TEST(contains, one_key)
 {
@@ -365,23 +375,19 @@ TEST(concurrent, insert_and_get_and_remove){
 TEST(concurrent, insert_and_get_and_remove_big){
 	boost::array<std::vector<int>, 6> keys, values;
 	hashmap<int, int> hmp;
-	const int testsize = 4096 * 2024;
+	const int testsize = 4096;
 	for(int i = 0; i<6; ++i){
 		keys[i].resize(testsize);
 		values[i].resize(testsize);
 	}
 	for(int i=0;i<testsize;i++){
-		keys[0][i] = i*6; // to insert
-		values[0][i] = i*6 + 1;
-		keys[1][i] = i*6 + 1;
+		for(int j=0;j<6;++j){
+			keys[j][i] = i*6 + j;
+			values[0][i] = i*i*6 + 1;
+		}
 		hmp.insert(std::make_pair(i*6 + 1, i*6 + 2)); // to get
-		keys[2][i] = i*6 + 2;
 		hmp.insert(std::make_pair(i*6 + 2, i*6 + 3)); // to remove
-		keys[3][i] = i*6 + 3; // to insert
-		values[3][i] = i*6 + 4;
-		keys[4][i] = i*6 + 4;
 		hmp.insert(std::make_pair(i*6 + 4, i*6 + 5)); // to get
-		keys[5][i] = i*6 + 5;
 		hmp.insert(std::make_pair(i*6 + 5, i*6 + 6)); // to remove
 	}
 	boost::barrier bar(6);

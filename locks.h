@@ -7,6 +7,8 @@
 #include <time.h>
 #include <pthread.h>
 
+// norwegianwoods
+
 namespace detail{
 void micro_sleep(const int t){
 	struct ::timespec req;
@@ -22,24 +24,33 @@ public:
 	void lock()
 	{
 		int count = 0;
-		while (!__sync_bool_compare_and_swap(static_cast<uint32_t*>(&flag.lock),
-																				 0, 1))
+		while(1)
 		{
-			if (count >= LOOP_SLESHOLD) {
-				micro_sleep(21);
-			} else {
-				pthread_yield();
-				count++;
+			if(*static_cast<uint32_t*>(&flag.lock) == 1){ // already locked !
+				if (count >= LOOP_SLESHOLD) {
+					count = 0;
+					micro_sleep(21);
+				} else {
+					count++;
+					pthread_yield();
+				}
+				continue;
+			}
+			
+			//if(!__sync_lock_test_and_set (static_cast<uint32_t*>(&flag.lock), 1))
+			//if(__sync_bool_compare_and_swap(static_cast<uint32_t*>(&flag.lock),
+			//0, 1))
+			if(flag.lock == 0)
+			{
+				flag.lock = 1;
+				return;
 			}
 		}
 	}
-	
-	bool try_lock() {
-		return __sync_bool_compare_and_swap(static_cast<uint32_t*>(&flag.lock),
-																				0, 1);
-	}
 	void unlock(){
-		__sync_lock_test_and_set(static_cast<uint32_t*>(&flag.lock), 0);
+		//__sync_lock_test_and_set(static_cast<uint32_t*>(&flag.lock), 0);
+		//__sync_lock_release(static_cast<uint32_t*>(&flag.lock), 0);
+		flag.lock = 0;
 	}
 private:
 	spin_lock(const spin_lock&);
