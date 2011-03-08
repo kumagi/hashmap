@@ -17,21 +17,12 @@ TEST(construct,buckets){
 	hashmap<int, std::list<int> > h;
 }
 
-TEST(construct,no_lock){
-	hashmap<int,std::string,0> hm;
-	hashmap<std::string, int,0> hmp;
-	hashmap<int, std::list<int>,0 > h;
-}
-
 TEST(insert, int_char)
 {
 	hashmap<int, int> hmp;
 	hmp.insert(std::make_pair<int,int>(2,4));
 }
-TEST(insert,no_lock){
-	hashmap<int,int,0> hm;
-	hm.insert(std::make_pair(2,1));
-}
+
 TEST(contains, one_key)
 {
 	hashmap<int, char> hmp;

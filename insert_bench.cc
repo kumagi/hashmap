@@ -7,10 +7,11 @@
 
 
 hashmap<int,int> hmp;
-
+int j = 0;
 void worker(const int work, const int offset){
 	for(int i = 0; i<work; ++i){
 		hmp.insert(std::make_pair(i + offset, i*2));
+		j++;
 	}
 }
 int main(int argc, char**argv){
@@ -25,5 +26,6 @@ int main(int argc, char**argv){
 		tg.create_thread(boost::bind(worker,trysize/threads,i*(trysize/threads)));
 	}
 	tg.join_all();
+	std::cout << j << std::endl;
 }
 

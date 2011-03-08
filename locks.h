@@ -7,7 +7,7 @@
 #include <time.h>
 #include <pthread.h>
 
-// norwegianwoods
+#include "atomic.h"
 
 namespace detail{
 void micro_sleep(const int t){
@@ -26,37 +26,39 @@ public:
 		int count = 0;
 		while(1)
 		{
-			if(*static_cast<uint32_t*>(&flag.lock) == 1){ // already locked !
+			if(*static_cast<volatile uint32_t*>(&flag.lock) == 1){ // already locked !
 				if (count >= LOOP_SLESHOLD) {
 					count = 0;
-					micro_sleep(21);
+					//micro_sleep(21);
 				} else {
 					count++;
-					pthread_yield();
+					//pthread_yield();
 				}
 				continue;
 			}
 			
-			//if(!__sync_lock_test_and_set (static_cast<uint32_t*>(&flag.lock), 1))
+			if(!__sync_lock_test_and_set (static_cast<volatile uint32_t*>(&flag.lock), 1))
 			//if(__sync_bool_compare_and_swap(static_cast<uint32_t*>(&flag.lock),
 			//0, 1))
-			if(flag.lock == 0)
+			//if(flag.lock == 0)
 			{
 				flag.lock = 1;
+				detail::atomic_fence_acquire();
 				return;
 			}
 		}
 	}
 	void unlock(){
 		//__sync_lock_test_and_set(static_cast<uint32_t*>(&flag.lock), 0);
-		//__sync_lock_release(static_cast<uint32_t*>(&flag.lock), 0);
-		flag.lock = 0;
+		__sync_lock_release(static_cast<volatile uint32_t*>(&flag.lock), 0);
+		detail::atomic_fence_release();
+		//flag.lock = 0;
 	}
 private:
 	spin_lock(const spin_lock&);
 	spin_lock& operator=(const spin_lock&);
 	union aligned_flag{
-		uint32_t lock;
+		volatile uint32_t lock;
 		char padding[CACHE_LINE - sizeof(uint32_t)];
 		aligned_flag():lock(0){}
 	} __attribute__((aligned(CACHE_LINE)));
