@@ -140,7 +140,7 @@ public:
 		return false;
 	}
 	~hashmap(){
-		for(int i=0; i < lock_qty; ++i){	locks[i].lock();	}
+		for(size_t i=0; i < lock_qty; ++i){	locks[i].lock();	}
 		for(size_t i=0; i < bucket_vector.size(); i++){
 			bucket_t* ptr = const_cast<bucket_t*>(bucket_vector[i]), *old_next;
 			while(ptr != NULL){
@@ -149,7 +149,7 @@ public:
 				ptr = old_next;
 			}
 		}
-		for(int i=0; i < lock_qty; ++i){	locks[i].unlock();	}
+		for(size_t i=0; i < lock_qty; ++i){	locks[i].unlock();	}
 		delete[] locks;
 	}
 	void dump()const{
@@ -199,7 +199,7 @@ private:
 		}
 		// assert all lock gained
 		bucket_vector.swap(new_buckets);
-		for(int i=0; i < lock_qty; ++i){
+		for(size_t i=0; i < lock_qty; ++i){
 			locks[i].unlock();
 		}
 		return true;
@@ -211,7 +211,7 @@ private:
 		bucket_t(const pair_t& k):kvp(k),next(NULL){}
 	};
 
-	const int lock_qty;
+	const std::size_t lock_qty;
 	mutable detail::spin_lock* locks;
 	const uint32_t max_chain;
 	marked_vector<volatile bucket_t*> bucket_vector;
