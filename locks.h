@@ -29,10 +29,10 @@ public:
 			if(*static_cast<volatile uint32_t*>(&flag.lock) == 1){ // already locked !
 				if (count >= LOOP_SLESHOLD) {
 					count = 0;
-					//micro_sleep(21);
+					micro_sleep(21);
 				} else {
 					count++;
-					//pthread_yield();
+					pthread_yield();
 				}
 				continue;
 			}
@@ -42,8 +42,7 @@ public:
 			//0, 1))
 			//if(flag.lock == 0)
 			{
-				flag.lock = 1;
-				detail::atomic_fence_acquire();
+				detail::reorder_partition();
 				return;
 			}
 		}
@@ -51,7 +50,7 @@ public:
 	void unlock(){
 		//__sync_lock_test_and_set(static_cast<uint32_t*>(&flag.lock), 0);
 		__sync_lock_release(static_cast<volatile uint32_t*>(&flag.lock), 0);
-		detail::atomic_fence_release();
+		detail::reorder_partition();
 		//flag.lock = 0;
 	}
 private:

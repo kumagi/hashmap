@@ -10,21 +10,17 @@
 #include <iostream>
 
 template<typename key, typename value>
-void insert_worker(hashmap<key,value>* target
+void remove_worker(hashmap<key,value>* target
 									 ,boost::barrier* b
-									 ,const std::vector<key> keys
-									 , const std::vector<value> values)
+									 ,const std::vector<key> keys)
 {
-	assert(keys.size() == values.size());
 	b->wait();
 	for(size_t i=0 ; i < keys.size(); ++i){
-		target->insert(std::make_pair(keys[i],values[i]));
-
+		target->remove(keys[i]);
 	}
 }
 
 int main(int argc, char** argv){
-	
 	if(argc != 5){
 		std::cout << "usage: ./checker [trysize] [threads] [locks] [max chain]\n";
 		return 1;
@@ -42,25 +38,24 @@ int main(int argc, char** argv){
 	}
 	hashmap<int, int> hmp(locks, 11, max_chain);
 	
-	std::vector<std::vector<int> > keys,values;
+	std::vector<std::vector<int> > keys;
 	for(int i = 0; i<threads; ++i){
 		keys.reserve(threads);
-		values.reserve(threads);
 	}
 	for(int i=0;i<testsize;i++){
 		const int target = i % threads;
 		keys[target].push_back(i);
-		values[target].push_back(i*i);
+		hmp.insert(std::make_pair(i, i * i));
 	}
 	boost::timer time;
 	boost::barrier bar(threads);
 	boost::thread_group tg;
 	for(int i=0;i<threads;++i){
-		tg.create_thread(bind(insert_worker<int,int>, &hmp, &bar, keys[i], values[i]));
+		tg.create_thread(bind(remove_worker<int,int>, &hmp, &bar, keys[i]));
 	}
 	tg.join_all();
 	double elapsed = time.elapsed();
-	printf("insert:%d items by %d threads %d locks %f q/s\n",
+	printf("remove:%d items by %d threads %d locks %f q/s\n",
 				 testsize, threads, locks, (double)testsize/elapsed);
 	//hmp.dump();
 }
